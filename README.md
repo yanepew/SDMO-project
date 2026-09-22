@@ -82,8 +82,8 @@ These instructions use **Windows PowerShell**.
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git
-cd YOUR-REPOSITORY
+git clone https://github.com/yanepew/SDMO-project/.git
+cd SDMO-project
 ```
 
 ### 2. Check Python installation
@@ -179,7 +179,7 @@ http://127.0.0.1:8001/pending-aggregates
 Alternatively, open three PowerShell terminals. In each terminal, move to the repository directory and activate the virtual environment:
 
 ```powershell
-cd PATH\TO\YOUR-REPOSITORY
+cd PATH\TO\SDMO-project
 .\.venv\Scripts\Activate.ps1
 ```
 
@@ -205,5 +205,3 @@ Stop the device with `Ctrl+C`. It requests that the gateway flush its current ag
 
 > Start services in this order: **cloud → gateway → device**.
 ```
-
-Replace `YOUR-USERNAME`, `YOUR-REPOSITORY`, and `PATH\TO\YOUR-REPOSITORY` with your actual values.
