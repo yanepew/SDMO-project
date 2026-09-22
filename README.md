@@ -77,8 +77,6 @@ The system contains three simulated Python components:
 # How to run the setup on Windows
 ## Using the script
 
-## Running on Windows
-
 These instructions use **Windows PowerShell**.
 
 ### 1. Clone the repository
