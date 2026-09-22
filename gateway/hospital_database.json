@@ -1,0 +1,20 @@
+{
+  "bed-a-001": {
+    "patient_id": "P-10001",
+    "patient_name": "Synthetic Patient One",
+    "room_number": "A-101",
+    "bed_number": "1"
+  },
+  "bed-a-002": {
+    "patient_id": "P-10002",
+    "patient_name": "Synthetic Patient Two",
+    "room_number": "A-102",
+    "bed_number": "1"
+  },
+  "bed-b-001": {
+    "patient_id": "P-10003",
+    "patient_name": "Synthetic Patient Three",
+    "room_number": "B-201",
+    "bed_number": "2"
+  }
+}
