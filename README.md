@@ -74,7 +74,7 @@ The system contains three simulated Python components:
 
 ```
 
-## How to run the setup on Windows
+# How to run the setup on Windows
 
 ```markdown
 ## Running on Windows
