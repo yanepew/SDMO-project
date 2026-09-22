@@ -76,7 +76,7 @@ The system contains three simulated Python components:
 
 # How to run the setup on Windows
 ## Using the script
-```markdown
+
 ## Running on Windows
 
 These instructions use **Windows PowerShell**.
