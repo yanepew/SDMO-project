@@ -196,8 +196,6 @@ def main() -> None:
     print("SIMULATED CLOUD SERVICE STARTED")
     print("=" * 70)
     print("[CLOUD] Listening on http://127.0.0.1:8002")
-    print("[CLOUD] Storage type: in-memory Python dictionary")
-    print("[CLOUD] Development server only; not for production use.")
     print()
 
     app.run(host="127.0.0.1", port=8002, debug=False)
