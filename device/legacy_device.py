@@ -129,6 +129,7 @@ def request_gateway_flush() -> None:
 
 
 def main() -> None:
+    global device_id
     id = input("Give device ID, if you type nothing bed-a-001 is used as ID: ")
     if len(id) > 0:
         device_id = id
