@@ -22,7 +22,7 @@ import requests
 from shared.legacy_crypto import encrypt_json
 
 
-DEVICE_ID = os.getenv("DEVICE_ID", "bed-a-001")
+device_id = "bed-a-001"
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:8001")
 
 # Simulated constrained-device characteristics.
@@ -61,7 +61,7 @@ def generate_blood_oxygen() -> int:
 def collect_sensor_reading() -> dict:
     """Create one synthetic patient-monitoring reading."""
     return {
-        "device_id": DEVICE_ID,
+        "device_id": device_id,
         "timestamp": datetime.now(UTC).isoformat(),
         "heart_rate_bpm": generate_heart_rate(),
         "blood_oxygen_percent": generate_blood_oxygen(),
@@ -129,10 +129,13 @@ def request_gateway_flush() -> None:
 
 
 def main() -> None:
+    id = input("Give device ID, if you type nothing bed-a-001 is used as ID")
+    if len(id) > 0:
+        device_id = id
     print("=" * 70)
     print("SIMULATED LEGACY DEVICE STARTED")
     print("=" * 70)
-    print(f"[DEVICE] Device ID: {DEVICE_ID}")
+    print(f"[DEVICE] Device ID: {device_id}")
     print(f"[DEVICE] Gateway URL: {GATEWAY_URL}")
     print(f"[DEVICE] Simulated memory limit: {SIMULATED_MEMORY_LIMIT_BYTES} bytes")
     print(f"[DEVICE] Sensor reading interval: {SENSOR_READING_INTERVAL_SECONDS} seconds")
