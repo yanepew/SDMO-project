@@ -5,7 +5,7 @@ The device:
 - generates synthetic heart-rate and blood-oxygen readings,
 - simulates a 2 KB payload/memory limit,
 - waits between readings to simulate limited processing capability,
-- encrypts data with legacy ChaCha20,
+- encrypts data with legacy XChaCha20,
 - sends encrypted readings to the edge gateway.
 
 This is an educational simulation only.
@@ -21,7 +21,6 @@ import requests
 
 from shared.legacy_crypto import encrypt_json
 
-
 device_id = "bed-a-001"
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:8001")
 
@@ -30,6 +29,8 @@ SIMULATED_MEMORY_LIMIT_BYTES = 2048
 SENSOR_READING_INTERVAL_SECONDS = 5
 HTTP_TIMEOUT_SECONDS = 5
 
+from legacy_memory_controller import MemoryController
+mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES)
 
 def generate_heart_rate() -> int:
     """
@@ -67,32 +68,9 @@ def collect_sensor_reading() -> dict:
         "blood_oxygen_percent": generate_blood_oxygen(),
     }
 
-
-def enforce_simulated_memory_limit(payload: dict) -> None:
-    """
-    Simulate the device's limited memory/payload capacity.
-
-    This does not limit the real Python process to 2 KB. Instead, it ensures
-    the outgoing serialized sensor message fits within the simulated 2 KB
-    message-memory constraint.
-    """
-    payload_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-
-    if payload_size > SIMULATED_MEMORY_LIMIT_BYTES:
-        raise MemoryError(
-            f"Simulated device payload is {payload_size} bytes, exceeding the "
-            f"{SIMULATED_MEMORY_LIMIT_BYTES}-byte legacy device limit."
-        )
-
-
 def send_reading_to_gateway(reading: dict) -> None:
     """Encrypt and send one reading to the edge gateway."""
-    enforce_simulated_memory_limit(reading)
-
     encrypted_payload = encrypt_json(reading)
-
-    # The final encrypted HTTP body should also remain below the simulated limit.
-    enforce_simulated_memory_limit(encrypted_payload)
 
     response = requests.post(
         f"{GATEWAY_URL}/device-data",

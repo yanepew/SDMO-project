@@ -3,7 +3,7 @@ Simulated hospital edge gateway.
 
 Responsibilities:
 - receive encrypted data from legacy devices,
-- decrypt legacy ChaCha20 payloads,
+- decrypt legacy XChaCha20 payloads,
 - map a device ID to synthetic patient information,
 - check health thresholds,
 - print simulated nurse/reception alerts,
@@ -271,7 +271,7 @@ def receive_device_data() -> tuple[Any, int]:
     Expected transport format:
 
     {
-      "algorithm": "ChaCha20-legacy-no-authentication",
+      "algorithm": "XChaCha20-legacy-no-authentication",
       "nonce": "...base64...",
       "ciphertext": "...base64..."
     }
