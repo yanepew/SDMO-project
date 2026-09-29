@@ -11,7 +11,6 @@ The device:
 This is an educational simulation only.
 """
 
-import json
 import os
 import random
 import time

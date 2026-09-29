@@ -42,11 +42,19 @@ class MemoryController:
         self.current_memory_use += size + len(key)
         self._ensure_capacity()
 
+    def allocate_empty_variables(self, *keys):
+        for key in keys:
+            self.allocate_variable(key, None)
+
     def deallocate_variable(self, key: str):
         if not key in self.memory:
             raise IndexError("Variable not found")
         self.current_memory_use -= len(key) + self.memory[key].memory_use
         del self.memory[key]
+
+    def deallocate_variables(self, *keys):
+        for key in keys:
+            self.deallocate_variable(key)
 
     #automatically deallocates the variable when the 'with' statement closes
     @contextmanager
