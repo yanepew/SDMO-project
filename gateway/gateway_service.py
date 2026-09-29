@@ -22,6 +22,8 @@ from threading import Lock
 from typing import Any
 
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from flask import Flask, jsonify, request
 
 from shared.legacy_crypto import decrypt_json
@@ -29,7 +31,7 @@ from shared.legacy_crypto import decrypt_json
 
 app = Flask(__name__)
 
-CLOUD_URL = os.getenv("CLOUD_URL", "http://127.0.0.1:8002")
+CLOUD_URL = os.getenv("CLOUD_URL", "https://127.0.0.1:8002")
 HOSPITAL_DATABASE_PATH = Path(__file__).parent / "hospital_database.json"
 
 # In-memory aggregation storage:
@@ -182,6 +184,7 @@ def send_aggregate_to_cloud(aggregate: dict[str, Any]) -> None:
         f"{CLOUD_URL}/aggregates",
         json=aggregate,
         timeout=5,
+        verify=False
     )
     response.raise_for_status()
 

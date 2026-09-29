@@ -195,10 +195,10 @@ def main() -> None:
     print("=" * 70)
     print("SIMULATED CLOUD SERVICE STARTED")
     print("=" * 70)
-    print("[CLOUD] Listening on http://127.0.0.1:8002")
+    print("[CLOUD] Listening on https://127.0.0.1:8002")
     print()
 
-    app.run(host="127.0.0.1", port=8002, debug=False)
+    app.run(host="127.0.0.1", port=8002, debug=False, ssl_context='adhoc')
 
 
 if __name__ == "__main__":
