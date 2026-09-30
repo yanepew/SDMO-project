@@ -1,20 +1,20 @@
 # Code from https://github.com/oconnor663/pure_python_salsa_chacha/blob/main/chacha20/pure_chacha20.py
 
-from legacy_memory_controller import MemoryController
+from device.legacy_memory_controller import MemoryController
 
-# input in temp_in, output to out
+# input in mask_in, output to out
 def mask32(mem: MemoryController):
-    mem["out"] = mem["temp_in"] & 0xFFFFFFFF
+    mem["out"] = mem["mask_in"] & 0xFFFFFFFF
 
 # input in pair, output to out
 def add32(mem: MemoryController):
-    with mem.auto_alloc("temp_in", mem["pair"][0] + mem["pair"][1]):
+    with mem.auto_alloc("mask_in", mem["pair"][0] + mem["pair"][1]):
         mask32(mem)
 
 # input in pair, output to out
 def left_rotate(mem: MemoryController):
-    with mem.auto_alloc("temp_in", mem["pair"][0] << mem["pair"][1]):
-        mask32()
+    with mem.auto_alloc("mask_in", mem["pair"][0] << mem["pair"][1]):
+        mask32(mem)
         mem["out"] = mem["out"] | (mem["pair"][0] >> (32 - mem["pair"][1]))
 
 # per_block is expected to store the block to permute and mem["abcd"] should have the indices
@@ -72,49 +72,73 @@ def chacha20_permute(mem: MemoryController):
             mem["abcd"] = (3, 4, 9, 14) # diagonal 4
             quarter_round(mem)
 
-# bytes read from wfb_in and so should mem["wfb_res_key"] key for result 
+# bytes read from wfb_in and outputs to mem["wfb_res_key"] 
 def words_from_bytes(mem: MemoryController):
     assert len(mem["wfb_in"]) % 4 == 0
     mem[mem["wfb_res_key"]] = [int.from_bytes(mem["wfb_in"][4 * i : 4 * i + 4], "little") for i in range(len(mem["wfb_in"]) // 4)]
 
-def bytes_from_words(w):
-    return b"".join(word.to_bytes(4, "little") for word in w)
+#reads words from bfw_in and outputs to mem["bfw_res_key"]
+def bytes_from_words(mem: MemoryController):
+    mem[mem["bfw_res_key"]] = b"".join(word.to_bytes(4, "little") for word in mem["bfw_in"])
 
+#reads derived_key, nonce and blocknum from memory and writes to block
 # This is the IETF (RFC 7539) version of ChaCha20, with a 96-bit nonce.
-def chacha20_block(key, nonce, blocknum):
+def chacha20_block(mem: MemoryController):
     # This implementation doesn't support 16-byte keys.
-    assert len(key) == 32
-    assert len(nonce) == 12
-    assert blocknum < 2 ** 32
-    constant_words = words_from_bytes(b"expand 32-byte k")
-    key_words = words_from_bytes(key)
-    nonce_words = words_from_bytes(nonce)
+    assert mem["blocknum"] < 2 ** 32
+    mem.allocate_empty_variables("constant_words", "key_words", "nonce_words", "out")
+    
+    mem.allocate_variable("wfb_in", b"expand 32-byte k")
+    mem.allocate_variable("wfb_res_key", "constant_words")
+    words_from_bytes(mem)
+
+    mem["wfb_in"] = mem["derived_key"]
+    mem["wfb_res_key"] = "key_words"
+    words_from_bytes(mem)
+
+    mem["wfb_in"] = b"\0\0\0\0" + mem["nonce"][16:]
+    mem["wfb_res_key"] = "nonce_words"
+    mem.deallocate_variables("wfb_in", "wfb_res_key")
+    words_from_bytes(mem)
+
     # fmt: off
-    original_block = [
-        constant_words[0],  constant_words[1],  constant_words[2],  constant_words[3],
-        key_words[0],       key_words[1],       key_words[2],       key_words[3],
-        key_words[4],       key_words[5],       key_words[6],       key_words[7],
-        mask32(blocknum),   nonce_words[0],     nonce_words[1],     nonce_words[2],
-    ]
-    # fmt: on
-    permuted_block = list(original_block)
-    chacha20_permute(permuted_block)
-    for i in range(len(permuted_block)):
-        permuted_block[i] = add32(permuted_block[i], original_block[i])
-    return bytes_from_words(permuted_block)
+    with mem.allocate_empty_variables("o_block", "per_block", "pair", "out", "mask_in"):
+        mem["mask_in"] = mem["blocknum"]
+        mask32(mem)
+        mem["o_block"] = [
+            mem["constant_words"][0], mem["constant_words"][1], mem["constant_words"][2], mem["constant_words"][3],
+            mem["key_words"][0],      mem["key_words"][1],      mem["key_words"][2],      mem["key_words"][3],
+            mem["key_words"][4],      mem["key_words"][5],      mem["key_words"][6],      mem["key_words"][7],
+            mem["out"],               mem["nonce_words"][0],    mem["nonce_words"][1],    mem["nonce_words"][2],
+        ]
+        mem.deallocate_variables("constant_words", "key_words", "nonce_words")
+        # fmt: on
+        mem["per_block"] = list(mem["o_block"])
+        chacha20_permute(mem)
+        for i in range(len(mem["per_block"])):
+            mem["pair"] = (mem["per_block"][i], mem["o_block"][i])
+            add32(mem)
+            mem["per_block"][i] = mem["out"]
+            mem.update_memory_use("per_block")
+        with mem.auto_alloc_multiple(("bfw_in", mem["per_block"]), ("bfw_res_key", "block")):
+            bytes_from_words(mem)
 
-def chacha20_stream(key, nonce, length):
-    output = bytearray()
-    blocknum = 0
-    while length > 0:
-        block = chacha20_block(key, nonce, blocknum)
-        take = min(length, len(block))
-        output.extend(block[:take])
-        length -= take
-        blocknum += 1
-    return output
+# reads key, nonce and message, outputs to stream
+def chacha20_stream(mem: MemoryController):
+    mem["stream"] = bytearray()
+    mem.allocate_variable("len", len(mem["message"]))
+    mem.allocate_variable("blocknum", 0)
+    while mem["len"] > 0:
+        with mem.auto_alloc("block", None):
+            chacha20_block(mem)
+            with mem.auto_alloc("take", min(mem["len"], len(mem["block"]))):
+                mem["stream"].extend(mem["block"][:mem["take"]])
+                mem.update_memory_use("stream")
+                mem["len"] -= mem["take"]
+                mem["blocknum"] += 1
+    mem.deallocate_variables("len", "blocknum")
 
-# expects key and nonce to be in memory and should have derived_key variable
+# reads key and nonce from memory and outputs to derived_key
 def hchacha20(mem: MemoryController):
     mem.allocate_empty_variables("constant_words", "key_words", "input_words")
 
@@ -140,16 +164,17 @@ def hchacha20(mem: MemoryController):
         mem.deallocate_variables("wfb_in", "wfb_res_key", "constant_words", "key_words", "input_words")
         # fmt: on
         chacha20_permute(mem)
-        outputs = mem["per_block"][0:4] + mem["per_block"][12:16]
-        return bytes_from_words(outputs)
+        with mem.auto_alloc("bfw_in", mem["per_block"][0:4] + mem["per_block"][12:16]):
+            with mem.auto_alloc("bfw_res_key", "derived_key"): #write directly to derived_key
+                bytes_from_words(mem)
             
-# expects key, nonce and message to be in memory and should similarly have a stream variable
+# reads key, nonce and message from memory and outputs to stream
 def xchacha20_stream(mem: MemoryController):
     with mem.auto_alloc("derived_key", None):
         hchacha20(mem) #set derived_key
-        chacha20_stream(derived_key, b"\0\0\0\0" + nonce[16:], length) #set stream
+        chacha20_stream(mem) #set stream
 
-# expects key, nonce and message to be in memory and should similarly have a ciphertext variable
+# reads key, nonce and message from memory and writes to ciphertext
 def xchacha20_xor(mem: MemoryController):
     # This implementation doesn't support 16-byte keys.
     assert len(mem["key"]) == 32

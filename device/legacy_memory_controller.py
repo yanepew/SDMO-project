@@ -15,11 +15,13 @@ class MemoryController:
 
     #if the retrieved mutable value (like list) is modified, update_memory_use must be called
     def __getitem__(self, key: str):
+        if not key in self.memory:
+            raise IndexError(f"Cannot get unitializes variable '{key}'")
         return self.memory[key].value
 
     def __setitem__(self, key: str, value):
         if not key in self.memory:
-            raise IndexError("Cannot set unitializes variable, use allocate_variable first")
+            raise IndexError(f"Cannot set unitializes variable '{key}', use allocate_variable first")
         self.memory[key].value = value
         self.update_memory_use(key)
 
@@ -36,7 +38,7 @@ class MemoryController:
 
     def allocate_variable(self, key: str, value):
         if key in self.memory:
-            raise IndexError("Cannot allocate variable that already exists")
+            raise IndexError(f"Cannot allocate '{key}' variable that already exists")
         size = asizeof.asizeof(value)
         self.memory[key] = _MemoryValue(size, value)
         self.current_memory_use += size + len(key)
@@ -48,7 +50,7 @@ class MemoryController:
 
     def deallocate_variable(self, key: str):
         if not key in self.memory:
-            raise IndexError("Variable not found")
+            raise IndexError(f"Variable '{key}' not found")
         self.current_memory_use -= len(key) + self.memory[key].memory_use
         del self.memory[key]
 
@@ -64,6 +66,17 @@ class MemoryController:
             yield None
         finally:
             self.deallocate_variable(key)
+
+    #automatically allocates multiple variables defined with pairs of keys and values
+    @contextmanager
+    def auto_alloc_multiple(self, *pairs: tuple[str, any]):
+        try:
+            for key, value in pairs:
+                self.allocate_variable(key, value)
+            yield None
+        finally:
+            for key, value in pairs:
+                self.deallocate_variable(key, value)
 
     #use 'with' statement to simulate allocation for the duration of the statement
     @contextmanager

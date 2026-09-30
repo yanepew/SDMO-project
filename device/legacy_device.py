@@ -16,6 +16,8 @@ import random
 import time
 from datetime import UTC, datetime
 
+import traceback
+
 import requests
 
 from shared.legacy_crypto import encrypt_json
@@ -28,8 +30,8 @@ SIMULATED_MEMORY_LIMIT_BYTES = 2048
 SENSOR_READING_INTERVAL_SECONDS = 5
 HTTP_TIMEOUT_SECONDS = 5
 
-from legacy_memory_controller import MemoryController
-mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES)
+#from device.legacy_memory_controller import MemoryController
+#mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES)
 
 def generate_heart_rate() -> int:
     """
@@ -127,10 +129,13 @@ def main() -> None:
                 send_reading_to_gateway(reading)
             except MemoryError as error:
                 print(f"[DEVICE] Memory constraint error: {error}")
+                traceback.print_exc()
             except requests.RequestException as error:
                 print(f"[DEVICE] Network error while contacting gateway: {error}")
+                traceback.print_exc()
             except Exception as error:
                 print(f"[DEVICE] Unexpected error: {error}")
+                traceback.print_exc()
 
             # Simulates limited processing power and periodic sensor collection.
             time.sleep(SENSOR_READING_INTERVAL_SECONDS)

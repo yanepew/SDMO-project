@@ -19,9 +19,9 @@ from typing import Any
 
 from Crypto.Cipher import ChaCha20
 import device.legacy_xchacha20
+from device.legacy_memory_controller import MemoryController
 
 DEFAULT_LEGACY_SHARED_KEY = "legacy-demo-key-for-coursework-only"
-
 
 def _derive_legacy_key(shared_secret: str) -> bytes:
     """
@@ -55,7 +55,13 @@ def encrypt_json(payload: dict[str, Any], shared_secret: str | None = None) -> d
     key = _derive_legacy_key(shared_secret)
 
     nonce = os.urandom(24)
-    ciphertext = device.legacy_xchacha20.xchacha20_xor(key, nonce, plaintext)
+
+    mem = MemoryController(1000_000)
+    mem.allocate_variable("key", key)
+    mem.allocate_variable("nonce", nonce)
+    mem.allocate_variable("message", plaintext)
+    device.legacy_xchacha20.xchacha20_xor(mem)
+    ciphertext = mem["ciphertext"]
     
     cipher = ChaCha20.new(key=key, nonce=nonce)
     ciphertest = cipher.encrypt(plaintext)
