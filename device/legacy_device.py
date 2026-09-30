@@ -20,18 +20,17 @@ import traceback
 
 import requests
 
-from shared.legacy_crypto import encrypt_json
+from device.legacy_encrypt import encrypt_json
+from device.legacy_memory_controller import MemoryController
 
 device_id = "bed-a-001"
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:8001")
 
-# Simulated constrained-device characteristics.
-SIMULATED_MEMORY_LIMIT_BYTES = 2048
+SIMULATED_MEMORY_LIMIT_BYTES = 4096
+mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES, True)
+
 SENSOR_READING_INTERVAL_SECONDS = 5
 HTTP_TIMEOUT_SECONDS = 5
-
-#from device.legacy_memory_controller import MemoryController
-#mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES)
 
 def generate_heart_rate() -> int:
     """
@@ -71,21 +70,22 @@ def collect_sensor_reading() -> dict:
 
 def send_reading_to_gateway(reading: dict) -> None:
     """Encrypt and send one reading to the edge gateway."""
-    encrypted_payload = encrypt_json(reading)
+    with mem.auto_alloc_vars(("payload", reading), ("ciphered_json", None)):
+        encrypt_json(mem)
 
-    response = requests.post(
-        f"{GATEWAY_URL}/device-data",
-        json=encrypted_payload,
-        timeout=HTTP_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
+        response = requests.post(
+            f"{GATEWAY_URL}/device-data",
+            json=mem["ciphered_json"],
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
 
-    print(
-        "[DEVICE] Sent encrypted reading: "
-        f"heart_rate={reading['heart_rate_bpm']} BPM, "
-        f"blood_oxygen={reading['blood_oxygen_percent']}%, "
-        f"gateway_response={response.status_code}"
-    )
+        print(
+            "[DEVICE] Sent encrypted reading: "
+            f"heart_rate={reading['heart_rate_bpm']} BPM, "
+            f"blood_oxygen={reading['blood_oxygen_percent']}%, "
+            f"gateway_response={response.status_code}"
+        )
 
 
 def request_gateway_flush() -> None:
@@ -129,10 +129,8 @@ def main() -> None:
                 send_reading_to_gateway(reading)
             except MemoryError as error:
                 print(f"[DEVICE] Memory constraint error: {error}")
-                traceback.print_exc()
             except requests.RequestException as error:
                 print(f"[DEVICE] Network error while contacting gateway: {error}")
-                traceback.print_exc()
             except Exception as error:
                 print(f"[DEVICE] Unexpected error: {error}")
                 traceback.print_exc()
@@ -143,7 +141,6 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\n[DEVICE] Device stopping.")
         request_gateway_flush()
-
 
 if __name__ == "__main__":
     main()

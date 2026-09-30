@@ -17,9 +17,8 @@ def left_rotate(mem: MemoryController):
         mask32(mem)
         mem["out"] = mem["out"] | (mem["pair"][0] >> (32 - mem["pair"][1]))
 
-# per_block is expected to store the block to permute and mem["abcd"] should have the indices
+# per_block is expected to store the block to permute and mem["abcd"] should have the indices. pair and out should exist in memory
 def quarter_round(mem: MemoryController):
-    mem.allocate_empty_variables("pair", "out")
     mem["pair"] = (mem["per_block"][mem["abcd"][0]], mem["per_block"][mem["abcd"][1]])
     add32(mem)
     mem["per_block"][mem["abcd"][0]] = mem["out"]
@@ -49,9 +48,8 @@ def quarter_round(mem: MemoryController):
     left_rotate(mem)
     mem["per_block"][mem["abcd"][1]] = mem["out"]
     mem.update_memory_use("per_block")
-    mem.deallocate_variables("pair", "out")
 
-# per_block in memory is permuted
+# per_block in memory is permuted, expects pair and out to exist in memory
 def chacha20_permute(mem: MemoryController):
     with mem.auto_alloc("abcd", None):
         for _ in range(10):
@@ -86,10 +84,10 @@ def bytes_from_words(mem: MemoryController):
 def chacha20_block(mem: MemoryController):
     # This implementation doesn't support 16-byte keys.
     assert mem["blocknum"] < 2 ** 32
-    mem.allocate_empty_variables("constant_words", "key_words", "nonce_words", "out")
+    mem.alloc_empty_vars("constant_words", "key_words", "nonce_words")
     
-    mem.allocate_variable("wfb_in", b"expand 32-byte k")
-    mem.allocate_variable("wfb_res_key", "constant_words")
+    mem.alloc_var("wfb_in", b"expand 32-byte k")
+    mem.alloc_var("wfb_res_key", "constant_words")
     words_from_bytes(mem)
 
     mem["wfb_in"] = mem["derived_key"]
@@ -98,20 +96,21 @@ def chacha20_block(mem: MemoryController):
 
     mem["wfb_in"] = b"\0\0\0\0" + mem["nonce"][16:]
     mem["wfb_res_key"] = "nonce_words"
-    mem.deallocate_variables("wfb_in", "wfb_res_key")
     words_from_bytes(mem)
 
+    mem.dealloc_vars("wfb_in", "wfb_res_key")
+
     # fmt: off
-    with mem.allocate_empty_variables("o_block", "per_block", "pair", "out", "mask_in"):
-        mem["mask_in"] = mem["blocknum"]
-        mask32(mem)
+    with mem.auto_alloc_empty_vars("o_block", "per_block", "pair", "out"):
+        with mem.auto_alloc("mask_in", mem["blocknum"]):
+            mask32(mem)
         mem["o_block"] = [
             mem["constant_words"][0], mem["constant_words"][1], mem["constant_words"][2], mem["constant_words"][3],
             mem["key_words"][0],      mem["key_words"][1],      mem["key_words"][2],      mem["key_words"][3],
             mem["key_words"][4],      mem["key_words"][5],      mem["key_words"][6],      mem["key_words"][7],
             mem["out"],               mem["nonce_words"][0],    mem["nonce_words"][1],    mem["nonce_words"][2],
         ]
-        mem.deallocate_variables("constant_words", "key_words", "nonce_words")
+        mem.dealloc_vars("constant_words", "key_words", "nonce_words")
         # fmt: on
         mem["per_block"] = list(mem["o_block"])
         chacha20_permute(mem)
@@ -120,30 +119,30 @@ def chacha20_block(mem: MemoryController):
             add32(mem)
             mem["per_block"][i] = mem["out"]
             mem.update_memory_use("per_block")
-        with mem.auto_alloc_multiple(("bfw_in", mem["per_block"]), ("bfw_res_key", "block")):
+        with mem.auto_alloc_vars(("bfw_in", mem["per_block"]), ("bfw_res_key", "block")):
             bytes_from_words(mem)
 
 # reads key, nonce and message, outputs to stream
 def chacha20_stream(mem: MemoryController):
     mem["stream"] = bytearray()
-    mem.allocate_variable("len", len(mem["message"]))
-    mem.allocate_variable("blocknum", 0)
+    mem.alloc_var("len", len(mem["message"]))
+    mem.alloc_var("blocknum", 0)
     while mem["len"] > 0:
-        with mem.auto_alloc("block", None):
+        with mem.auto_alloc_empty_vars("block", "take"):
             chacha20_block(mem)
-            with mem.auto_alloc("take", min(mem["len"], len(mem["block"]))):
-                mem["stream"].extend(mem["block"][:mem["take"]])
-                mem.update_memory_use("stream")
-                mem["len"] -= mem["take"]
-                mem["blocknum"] += 1
-    mem.deallocate_variables("len", "blocknum")
+            mem["take"] = min(mem["len"], len(mem["block"]))
+            mem["stream"].extend(mem["block"][:mem["take"]])
+            mem.update_memory_use("stream")
+            mem["len"] -= mem["take"]
+            mem["blocknum"] += 1
+    mem.dealloc_vars("len", "blocknum")
 
 # reads key and nonce from memory and outputs to derived_key
 def hchacha20(mem: MemoryController):
-    mem.allocate_empty_variables("constant_words", "key_words", "input_words")
+    mem.alloc_empty_vars("constant_words", "key_words", "input_words")
 
-    mem.allocate_variable("wfb_in", b"expand 32-byte k")
-    mem.allocate_variable("wfb_res_key", "constant_words")
+    mem.alloc_var("wfb_in", b"expand 32-byte k")
+    mem.alloc_var("wfb_res_key", "constant_words")
     words_from_bytes(mem)
 
     mem["wfb_in"] = mem["key"]
@@ -161,9 +160,10 @@ def hchacha20(mem: MemoryController):
             mem["key_words"][4],      mem["key_words"][5],      mem["key_words"][6],      mem["key_words"][7],
             mem["input_words"][0],    mem["input_words"][1],    mem["input_words"][2],    mem["input_words"][3]
         ]
-        mem.deallocate_variables("wfb_in", "wfb_res_key", "constant_words", "key_words", "input_words")
+        mem.dealloc_vars("wfb_in", "wfb_res_key", "constant_words", "key_words", "input_words")
         # fmt: on
-        chacha20_permute(mem)
+        with mem.auto_alloc_empty_vars("pair", "out"):
+            chacha20_permute(mem)
         with mem.auto_alloc("bfw_in", mem["per_block"][0:4] + mem["per_block"][12:16]):
             with mem.auto_alloc("bfw_res_key", "derived_key"): #write directly to derived_key
                 bytes_from_words(mem)

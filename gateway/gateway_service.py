@@ -26,7 +26,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from flask import Flask, jsonify, request
 
-from shared.legacy_crypto import decrypt_json
+from gateway.legacy_decrypt import decrypt_json
 
 
 app = Flask(__name__)
