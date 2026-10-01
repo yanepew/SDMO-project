@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pympler import asizeof
 from contextlib import contextmanager
+import time
 
 @dataclass
 class _MemoryValue:
@@ -60,7 +61,6 @@ class MemoryController:
         self._ensure_capacity()
 
     def alloc_var(self, key: str, value):
-        import time
         if key in self._memory:
             raise IndexError(f"Cannot allocate '{key}' variable that already exists")
         size = asizeof.asizeof(value)
@@ -127,6 +127,7 @@ class MemoryController:
         initialized = False
         try:
             self._current_memory_use += size
+            time.sleep(0.001) #simulate device with slow memory allocations
             initialized = True
             self._ensure_capacity()
             yield None #wait until 'with' is closed
