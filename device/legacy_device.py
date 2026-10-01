@@ -143,7 +143,7 @@ def main() -> None:
             # Simulates periodic sensor collection.
             mem["total_time"] = time.time() - mem["start_time"]
             #UNCOMMENT the line below to get timing data
-            print(f"[DEBUG TIMING] Sensory reading and sending took {mem["total_time"]:.3f} seconds")
+            #print(f"[DEBUG TIMING] Sensory reading and sending took {mem["total_time"]:.3f} seconds")
             time.sleep(max(mem["SENSOR_READING_INTERVAL_SECONDS"] - (mem["total_time"]), 0))
 
     except KeyboardInterrupt:
