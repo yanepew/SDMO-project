@@ -3,49 +3,47 @@ Simulated limited-capability legacy patient-monitoring device.
 
 The device:
 - generates synthetic heart-rate and blood-oxygen readings,
-- simulates a 2 KB payload/memory limit,
-- waits between readings to simulate limited processing capability,
-- encrypts data with legacy ChaCha20,
+- simulates a 8 KB memory limit,
+- waits between readings
+- encrypts data with legacy XChaCha20,
 - sends encrypted readings to the edge gateway.
 
 This is an educational simulation only.
 """
 
-import json
 import os
 import random
 import time
 from datetime import UTC, datetime
 
+import traceback
+
 import requests
 
-from shared.legacy_crypto import encrypt_json
+from device.legacy_encrypt import encrypt_json
+from device.legacy_memory_controller import MemoryController
 
+SIMULATED_MEMORY_LIMIT_BYTES = 8192
+mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES, True)
+mem.alloc_var("device_id", "bed-a-001")
+mem.alloc_var("GATEWAY_URL", os.getenv("GATEWAY_URL", "http://127.0.0.1:8001"))
+mem.alloc_var("SENSOR_READING_INTERVAL_SECONDS", 5)
+mem.alloc_var("HTTP_TIMEOUT_SECONDS", 5)
 
-device_id = "bed-a-001"
-GATEWAY_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:8001")
-
-# Simulated constrained-device characteristics.
-SIMULATED_MEMORY_LIMIT_BYTES = 2048
-SENSOR_READING_INTERVAL_SECONDS = 5
-HTTP_TIMEOUT_SECONDS = 5
-
-
-def generate_heart_rate() -> int:
+def generate_heart_rate() -> None:
     """
     Generate a synthetic heart-rate reading.
 
     Most values are normal. Some intentionally abnormal values are generated
     so that the gateway alerting logic can be demonstrated.
     """
-    abnormal_case = random.random()
-
-    if abnormal_case < 0.08:
-        return random.randint(25, 39)  # dangerously low
-    if abnormal_case < 0.16:
-        return random.randint(101, 140)  # high
-    return random.randint(55, 95)
-
+    with mem.auto_alloc("abnormal_case", random.random()):
+        if mem["abnormal_case"] < 0.08:
+            mem["heart_rate"] = random.randint(25, 39)  # dangerously low
+        elif mem["abnormal_case"] < 0.16:
+            mem["heart_rate"] = random.randint(101, 140)  # high
+        else:
+            mem["heart_rate"] = random.randint(55, 95)
 
 def generate_blood_oxygen() -> int:
     """
@@ -54,59 +52,42 @@ def generate_blood_oxygen() -> int:
     Most values are normal. Some intentionally abnormal values are generated.
     """
     if random.random() < 0.12:
-        return random.randint(82, 89)  # low blood oxygen
-    return random.randint(94, 100)
+        mem["blood_oxygen"] = random.randint(82, 89)  # low blood oxygen
+    else:
+        mem["blood_oxygen"] = random.randint(94, 100)
 
 
-def collect_sensor_reading() -> dict:
+def collect_sensor_reading() -> None:
     """Create one synthetic patient-monitoring reading."""
-    return {
-        "device_id": device_id,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "heart_rate_bpm": generate_heart_rate(),
-        "blood_oxygen_percent": generate_blood_oxygen(),
-    }
+    with mem.auto_alloc_empty_vars("heart_rate", "blood_oxygen"):
+        generate_heart_rate()
+        generate_blood_oxygen()
+        mem["payload"] = {
+            "device_id": mem["device_id"],
+            "timestamp": datetime.now(UTC).isoformat(),
+            "heart_rate_bpm": mem["heart_rate"],
+            "blood_oxygen_percent": mem["blood_oxygen"],
+        }
 
-
-def enforce_simulated_memory_limit(payload: dict) -> None:
-    """
-    Simulate the device's limited memory/payload capacity.
-
-    This does not limit the real Python process to 2 KB. Instead, it ensures
-    the outgoing serialized sensor message fits within the simulated 2 KB
-    message-memory constraint.
-    """
-    payload_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-
-    if payload_size > SIMULATED_MEMORY_LIMIT_BYTES:
-        raise MemoryError(
-            f"Simulated device payload is {payload_size} bytes, exceeding the "
-            f"{SIMULATED_MEMORY_LIMIT_BYTES}-byte legacy device limit."
-        )
-
-
-def send_reading_to_gateway(reading: dict) -> None:
+def send_reading_to_gateway() -> None:
     """Encrypt and send one reading to the edge gateway."""
-    enforce_simulated_memory_limit(reading)
+    with mem.auto_alloc("ciphered_json", None):
+        encrypt_json(mem)
 
-    encrypted_payload = encrypt_json(reading)
+        with mem.temp_alloc(4096): #simulate the post to take 4 KB, in reality post returns an object ~ 30KB
+            response = requests.post(
+                f"{mem["GATEWAY_URL"]}/device-data",
+                json=mem["ciphered_json"],
+                timeout=mem["HTTP_TIMEOUT_SECONDS"],
+            )
+            response.raise_for_status()
 
-    # The final encrypted HTTP body should also remain below the simulated limit.
-    enforce_simulated_memory_limit(encrypted_payload)
-
-    response = requests.post(
-        f"{GATEWAY_URL}/device-data",
-        json=encrypted_payload,
-        timeout=HTTP_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-
-    print(
-        "[DEVICE] Sent encrypted reading: "
-        f"heart_rate={reading['heart_rate_bpm']} BPM, "
-        f"blood_oxygen={reading['blood_oxygen_percent']}%, "
-        f"gateway_response={response.status_code}"
-    )
+            print(
+                "[DEVICE] Sent encrypted reading: "
+                f"heart_rate={mem["payload"]['heart_rate_bpm']} BPM, "
+                f"blood_oxygen={mem["payload"]['blood_oxygen_percent']}%, "
+                f"gateway_response={response.status_code}"
+            )
 
 
 def request_gateway_flush() -> None:
@@ -118,50 +99,56 @@ def request_gateway_flush() -> None:
     without waiting for a full hour.
     """
     try:
-        response = requests.post(
-            f"{GATEWAY_URL}/flush-aggregates",
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        print("[DEVICE] Requested gateway aggregate flush.")
+        with mem.temp_alloc(4096): #simulate the post to take 4 KB
+            response = requests.post(
+                f"{mem["GATEWAY_URL"]}/flush-aggregates",
+                timeout=mem["HTTP_TIMEOUT_SECONDS"],
+            )
+            response.raise_for_status()
+            print("[DEVICE] Requested gateway aggregate flush.")
     except requests.RequestException as error:
         print(f"[DEVICE] Could not request gateway aggregate flush: {error}")
 
-
 def main() -> None:
-    global device_id
-    id = input("Give device ID, if you type nothing bed-a-001 is used as ID: ")
-    if len(id) > 0:
-        device_id = id
+    with mem.auto_alloc("id", input("Give device ID, if you type nothing bed-a-001 is used as ID: ")):
+        if len(mem["id"]) > 0:
+            mem["device_id"] = mem["id"]
     print("=" * 70)
     print("SIMULATED LEGACY DEVICE STARTED")
     print("=" * 70)
-    print(f"[DEVICE] Device ID: {device_id}")
-    print(f"[DEVICE] Gateway URL: {GATEWAY_URL}")
+    print(f"[DEVICE] Device ID: {mem["device_id"]}")
+    print(f"[DEVICE] Gateway URL: {mem["GATEWAY_URL"]}")
     print(f"[DEVICE] Simulated memory limit: {SIMULATED_MEMORY_LIMIT_BYTES} bytes")
-    print(f"[DEVICE] Sensor reading interval: {SENSOR_READING_INTERVAL_SECONDS} seconds")
+    print(f"[DEVICE] Sensor reading interval: {mem["SENSOR_READING_INTERVAL_SECONDS"]} seconds")
     print("[DEVICE] Press Ctrl+C to stop and flush gateway aggregates.")
     print()
 
     try:
+        mem.alloc_empty_vars("start_time", "total_time")
         while True:
             try:
-                reading = collect_sensor_reading()
-                send_reading_to_gateway(reading)
+                mem["start_time"] = time.time()
+                with mem.auto_alloc("payload", None):
+                    collect_sensor_reading()
+                    send_reading_to_gateway()
             except MemoryError as error:
                 print(f"[DEVICE] Memory constraint error: {error}")
+                traceback.print_exc()
             except requests.RequestException as error:
                 print(f"[DEVICE] Network error while contacting gateway: {error}")
             except Exception as error:
                 print(f"[DEVICE] Unexpected error: {error}")
+                traceback.print_exc()
 
-            # Simulates limited processing power and periodic sensor collection.
-            time.sleep(SENSOR_READING_INTERVAL_SECONDS)
+            # Simulates periodic sensor collection.
+            mem["total_time"] = time.time() - mem["start_time"]
+            #UNCOMMENT the line below to get timing data
+            #print(f"[DEBUG TIMING] Sensory reading and sending took {mem["total_time"]:.3f} seconds")
+            time.sleep(max(mem["SENSOR_READING_INTERVAL_SECONDS"] - (mem["total_time"]), 0))
 
     except KeyboardInterrupt:
         print("\n[DEVICE] Device stopping.")
         request_gateway_flush()
-
 
 if __name__ == "__main__":
     main()
