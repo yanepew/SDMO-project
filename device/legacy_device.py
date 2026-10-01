@@ -3,8 +3,8 @@ Simulated limited-capability legacy patient-monitoring device.
 
 The device:
 - generates synthetic heart-rate and blood-oxygen readings,
-- simulates a 4 KB memory limit,
-- waits between readings to simulate limited processing capability,
+- simulates a 8 KB memory limit,
+- waits between readings
 - encrypts data with legacy XChaCha20,
 - sends encrypted readings to the edge gateway.
 
@@ -23,7 +23,7 @@ import requests
 from device.legacy_encrypt import encrypt_json
 from device.legacy_memory_controller import MemoryController
 
-SIMULATED_MEMORY_LIMIT_BYTES = 4096
+SIMULATED_MEMORY_LIMIT_BYTES = 8192
 mem = MemoryController(SIMULATED_MEMORY_LIMIT_BYTES, True)
 mem.alloc_var("device_id", "bed-a-001")
 mem.alloc_var("GATEWAY_URL", os.getenv("GATEWAY_URL", "http://127.0.0.1:8001"))
@@ -74,7 +74,7 @@ def send_reading_to_gateway() -> None:
     with mem.auto_alloc("ciphered_json", None):
         encrypt_json(mem)
 
-        with mem.temp_alloc(1012): #simulate the post to take 1 KB, in reality post returns an object ~ 30KB
+        with mem.temp_alloc(4096): #simulate the post to take 4 KB, in reality post returns an object ~ 30KB
             response = requests.post(
                 f"{mem["GATEWAY_URL"]}/device-data",
                 json=mem["ciphered_json"],
@@ -99,7 +99,7 @@ def request_gateway_flush() -> None:
     without waiting for a full hour.
     """
     try:
-        with mem.temp_alloc(1012): #simulate the post to take 1 KB
+        with mem.temp_alloc(4096): #simulate the post to take 4 KB
             response = requests.post(
                 f"{mem["GATEWAY_URL"]}/flush-aggregates",
                 timeout=mem["HTTP_TIMEOUT_SECONDS"],
@@ -124,24 +124,27 @@ def main() -> None:
     print()
 
     try:
+        mem.alloc_empty_vars("start_time", "total_time")
         while True:
             try:
+                mem["start_time"] = time.time()
                 with mem.auto_alloc("payload", None):
-                    start_time = time.time()
                     collect_sensor_reading()
                     send_reading_to_gateway()
-                    t = time.time() - start_time
-                    print("took: " + str(t) + "s")
             except MemoryError as error:
                 print(f"[DEVICE] Memory constraint error: {error}")
+                traceback.print_exc()
             except requests.RequestException as error:
                 print(f"[DEVICE] Network error while contacting gateway: {error}")
             except Exception as error:
                 print(f"[DEVICE] Unexpected error: {error}")
                 traceback.print_exc()
 
-            # Simulates limited processing power and periodic sensor collection.
-            time.sleep(mem["SENSOR_READING_INTERVAL_SECONDS"])
+            # Simulates periodic sensor collection.
+            mem["total_time"] = time.time() - mem["start_time"]
+            #UNCOMMENT the line below to get timing data
+            #print(f"[DEBUG TIMING] Sensory reading and sending took {mem["total_time"]:.3f} seconds")
+            time.sleep(max(mem["SENSOR_READING_INTERVAL_SECONDS"] - (mem["total_time"]), 0))
 
     except KeyboardInterrupt:
         print("\n[DEVICE] Device stopping.")
