@@ -1,54 +1,8 @@
-```gitignore
-# Python bytecode
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environments
 .venv/
-venv/
-env/
-
-# Environment configuration and secrets
-.env
-.env.*
-!.env.example
-
-# Test and coverage output
+__pycache__/
+*.pyc
 .pytest_cache/
 .coverage
 coverage.xml
-htmlcov/
-
-# Python tooling caches
-.mypy_cache/
-.ruff_cache/
-
-# IDE files
-.vscode/
-.idea/
-
-# Operating-system files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# Local generated databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Generated cryptographic material
-*.key
-*.pem
-*.crt
+# Long-term private keys must never be committed
 keys/
-certs/
-
-# Python build files
-build/
-dist/
-*.egg-info/
